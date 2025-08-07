@@ -5,30 +5,30 @@ const config = {
   // Development Environment
   DEV: {
     API: {
-      BASE_URL: 'http://localhost:3001',
+      BASE_URL: 'https://stock.happybilling.serv00.net',
     },
     WEBSOCKET: {
-      URL: 'http://localhost:3001',
+      URL: 'https://stock.happybilling.serv00.net',
     }
   },
 
   // Production Environment
   PROD: {
     API: {
-      BASE_URL: 'https://your-production-server.com',
+      BASE_URL: 'https://stock.happybilling.serv00.net',
     },
     WEBSOCKET: {
-      URL: 'https://your-production-server.com',
+      URL: 'https://stock.happybilling.serv00.net',
     }
   },
 
   // Staging Environment
   STAGING: {
     API: {
-      BASE_URL: 'https://your-staging-server.com',
+      BASE_URL: 'https://stock.happybilling.serv00.net',
     },
     WEBSOCKET: {
-      URL: 'https://your-staging-server.com',
+      URL: 'https://stock.happybilling.serv00.net',
     }
   }
 };

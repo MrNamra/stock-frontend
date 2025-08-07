@@ -1,27 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import config, { getPositionsUrl, getAlertsUrl } from '../config/config';
+import { Button } from './ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Badge } from './ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { X, Plus, Trash2, Bell, TrendingUp, TrendingDown } from 'lucide-react';
+import { getAlertsUrl, getPositionsUrl } from '../config/config';
+import apiClient from '../utils/axiosConfig';
 import tokenManager from '../utils/tokenManager';
 
-const StockTradingModal = ({ stock, isOpen, onClose, onPositionUpdate }) => {
+const StockTradingModal = ({ stock, isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState('position');
-  const [position, setPosition] = useState(null);
-  const [alerts, setAlerts] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  // Position form state
-  const [positionForm, setPositionForm] = useState({
+  const [position, setPosition] = useState({
     quantity: '',
-    purchasePrice: ''
+    purchasePrice: '',
+    totalInvestment: 0
   });
-
-  // Alert form state
-  const [alertForm, setAlertForm] = useState({
+  const [alerts, setAlerts] = useState([]);
+  const [newAlert, setNewAlert] = useState({
     alertType: 'buy',
+    condition: 'price_target',
     targetPrice: '',
-    percentageChange: ''
+    percentageChange: '',
+    basePrice: ''
   });
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
     if (isOpen && stock) {
@@ -32,88 +38,93 @@ const StockTradingModal = ({ stock, isOpen, onClose, onPositionUpdate }) => {
 
   const fetchPosition = async () => {
     try {
-      const token = tokenManager.getToken();
-      const response = await axios.get(getPositionsUrl('GET_SYMBOL', stock.symbol), {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setPosition(response.data.data);
-      if (response.data.data) {
-        setPositionForm({
+      const response = await apiClient.get(getPositionsUrl('GET_STOCK', stock.symbol));
+      if (response.data.success && response.data.data) {
+        setPosition({
           quantity: response.data.data.quantity.toString(),
-          purchasePrice: response.data.data.purchasePrice.toString()
+          purchasePrice: response.data.data.purchasePrice.toString(),
+          totalInvestment: response.data.data.totalInvestment
         });
+      } else {
+        setPosition({ quantity: '', purchasePrice: '', totalInvestment: 0 });
       }
     } catch (error) {
-      console.error('Error fetching position:', error);
-      setPosition(null);
+      console.error('Failed to fetch position:', error);
+      setPosition({ quantity: '', purchasePrice: '', totalInvestment: 0 });
     }
   };
 
   const fetchAlerts = async () => {
     try {
-      const token = tokenManager.getToken();
-      const response = await axios.get(getAlertsUrl('GET_STOCK', stock.symbol), {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setAlerts(response.data.data);
+      const response = await apiClient.get(getAlertsUrl('GET_STOCK', stock.symbol));
+      if (response.data.success) {
+        setAlerts(response.data.data || []);
+      }
     } catch (error) {
-      console.error('Error fetching alerts:', error);
+      console.error('Failed to fetch alerts:', error);
       setAlerts([]);
     }
   };
 
-  const handlePositionSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+  const savePosition = async () => {
+    if (!position.quantity || !position.purchasePrice) {
+      setMessage('Please fill in all fields');
+      return;
+    }
 
+    setLoading(true);
     try {
-      const token = tokenManager.getToken();
-      const response = await axios.post(getPositionsUrl('CREATE'), {
+      const totalInvestment = parseFloat(position.quantity) * parseFloat(position.purchasePrice);
+      const response = await apiClient.post(getPositionsUrl('CREATE_UPDATE'), {
         symbol: stock.symbol,
-        quantity: parseFloat(positionForm.quantity),
-        purchasePrice: parseFloat(positionForm.purchasePrice)
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
+        quantity: parseInt(position.quantity),
+        purchasePrice: parseFloat(position.purchasePrice),
+        totalInvestment
       });
 
-      setPosition(response.data.data);
-      onPositionUpdate && onPositionUpdate(response.data.data);
-      setError('');
+      if (response.data.success) {
+        setMessage('Position saved successfully!');
+        setPosition({ ...position, totalInvestment });
+      }
     } catch (error) {
-      console.error('Error updating position:', error);
-      setError(error.response?.data?.error || 'Failed to update position');
+      setMessage('Failed to save position: ' + (error.response?.data?.error || error.message));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAlertSubmit = async (e) => {
-    e.preventDefault();
+  const addAlert = async () => {
+    if (!newAlert.targetPrice && !newAlert.percentageChange) {
+      setMessage('Please enter either target price or percentage change');
+      return;
+    }
+
     setLoading(true);
-    setError('');
-
     try {
-      const token = tokenManager.getToken();
-      const response = await axios.post(getAlertsUrl('CREATE'), {
+      const alertData = {
         symbol: stock.symbol,
-        alertType: alertForm.alertType,
-        targetPrice: parseFloat(alertForm.targetPrice),
-        percentageChange: alertForm.percentageChange ? parseFloat(alertForm.percentageChange) : null
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+        alertType: newAlert.alertType,
+        condition: newAlert.condition,
+        targetPrice: newAlert.targetPrice ? parseFloat(newAlert.targetPrice) : 0,
+        percentageChange: newAlert.percentageChange ? parseFloat(newAlert.percentageChange) : 0,
+        basePrice: newAlert.basePrice ? parseFloat(newAlert.basePrice) : stock.price
+      };
 
-      setAlerts([response.data.data, ...alerts]);
-      setAlertForm({
-        alertType: 'buy',
-        targetPrice: '',
-        percentageChange: ''
-      });
-      setError('');
+      const response = await apiClient.post(getAlertsUrl('CREATE'), alertData);
+      
+      if (response.data.success) {
+        setMessage('Alert created successfully!');
+        setNewAlert({
+          alertType: 'buy',
+          condition: 'price_target',
+          targetPrice: '',
+          percentageChange: '',
+          basePrice: ''
+        });
+        fetchAlerts(); // Refresh alerts list
+      }
     } catch (error) {
-      console.error('Error creating alert:', error);
-      setError(error.response?.data?.error || 'Failed to create alert');
+      setMessage('Failed to create alert: ' + (error.response?.data?.error || error.message));
     } finally {
       setLoading(false);
     }
@@ -121,247 +132,264 @@ const StockTradingModal = ({ stock, isOpen, onClose, onPositionUpdate }) => {
 
   const deleteAlert = async (alertId) => {
     try {
-      const token = tokenManager.getToken();
-      await axios.delete(getAlertsUrl('DELETE', alertId), {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setAlerts(alerts.filter(alert => alert._id !== alertId));
+      const response = await apiClient.delete(getAlertsUrl('DELETE', alertId));
+      if (response.data.success) {
+        setMessage('Alert deleted successfully!');
+        fetchAlerts(); // Refresh alerts list
+      }
     } catch (error) {
-      console.error('Error deleting alert:', error);
-      setError('Failed to delete alert');
+      setMessage('Failed to delete alert: ' + (error.response?.data?.error || error.message));
     }
   };
 
-  const deletePosition = async () => {
-    if (!window.confirm('Are you sure you want to delete this position?')) return;
-
-    try {
-      const token = tokenManager.getToken();
-      await axios.delete(getPositionsUrl('DELETE', stock.symbol), {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setPosition(null);
-      setPositionForm({ quantity: '', purchasePrice: '' });
-      onPositionUpdate && onPositionUpdate(null);
-    } catch (error) {
-      console.error('Error deleting position:', error);
-      setError('Failed to delete position');
+  const getAlertTypeIcon = (alertType) => {
+    switch (alertType) {
+      case 'buy':
+        return <TrendingUp className="h-4 w-4 text-green-600" />;
+      case 'sell':
+        return <TrendingDown className="h-4 w-4 text-red-600" />;
+      case 'stop_loss':
+        return <TrendingDown className="h-4 w-4 text-orange-600" />;
+      case 'take_profit':
+        return <TrendingUp className="h-4 w-4 text-blue-600" />;
+      default:
+        return <Bell className="h-4 w-4" />;
     }
   };
 
-  const calculateProfitLoss = () => {
-    if (!position || !stock.price) return { profitLoss: 0, percentage: 0 };
-    
-    const currentValue = position.quantity * stock.price;
-    const profitLoss = currentValue - position.totalInvestment;
-    const percentage = (profitLoss / position.totalInvestment) * 100;
-    
-    return { profitLoss, percentage };
+  const getAlertTypeColor = (alertType) => {
+    switch (alertType) {
+      case 'buy':
+        return 'bg-green-100 text-green-800';
+      case 'sell':
+        return 'bg-red-100 text-red-800';
+      case 'stop_loss':
+        return 'bg-orange-100 text-orange-800';
+      case 'take_profit':
+        return 'bg-blue-100 text-blue-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
   };
 
-  const formatPrice = (price) => {
-    if (!price) return 'N/A';
-    return `${config.STOCKS.CURRENCY}${price.toLocaleString(config.STOCKS.LOCALE, { minimumFractionDigits: 2 })}`;
-  };
-
-  if (!isOpen) return null;
-
-  const { profitLoss, percentage } = calculateProfitLoss();
+  if (!isOpen || !stock) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>📈 {stock.symbol} - Trading</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b">
+          <div>
+            <h2 className="text-2xl font-bold">{stock.symbol} Trading & Alerts</h2>
+            <p className="text-gray-600">Current Price: ₹{stock.price}</p>
+          </div>
+          <Button variant="ghost" onClick={onClose}>
+            <X className="h-6 w-6" />
+          </Button>
         </div>
 
-        <div className="modal-tabs">
-          <button 
-            className={`tab-btn ${activeTab === 'position' ? 'active' : ''}`}
-            onClick={() => setActiveTab('position')}
-          >
-            💼 Position
-          </button>
-          <button 
-            className={`tab-btn ${activeTab === 'alerts' ? 'active' : ''}`}
-            onClick={() => setActiveTab('alerts')}
-          >
-            🔔 Alerts
-          </button>
-        </div>
-
-        {error && (
-          <div className="error-message">
-            {error}
+        {/* Message */}
+        {message && (
+          <div className={`p-4 mx-6 mt-4 rounded-lg ${
+            message.includes('successfully') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+          }`}>
+            {message}
           </div>
         )}
 
-        {activeTab === 'position' && (
-          <div className="modal-body">
-            <div className="stock-info">
-              <h3>{stock.name}</h3>
-              <p className="current-price">Current Price: {formatPrice(stock.price)}</p>
-            </div>
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="p-6">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="position">Position</TabsTrigger>
+            <TabsTrigger value="alerts">Alerts</TabsTrigger>
+          </TabsList>
 
-            {position ? (
-              <div className="position-details">
-                <h4>Your Position</h4>
-                <div className="position-stats">
-                  <div className="stat">
-                    <span>Quantity:</span>
-                    <span>{position.quantity}</span>
+          {/* Position Tab */}
+          <TabsContent value="position" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Stock Position</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="quantity">Quantity (Shares)</Label>
+                    <Input
+                      id="quantity"
+                      type="number"
+                      value={position.quantity}
+                      onChange={(e) => {
+                        const quantity = e.target.value;
+                        const purchasePrice = position.purchasePrice;
+                        const totalInvestment = quantity && purchasePrice 
+                          ? parseFloat(quantity) * parseFloat(purchasePrice) 
+                          : 0;
+                        setPosition({ ...position, quantity, totalInvestment });
+                      }}
+                      placeholder="Enter quantity"
+                    />
                   </div>
-                  <div className="stat">
-                    <span>Purchase Price:</span>
-                    <span>{formatPrice(position.purchasePrice)}</span>
-                  </div>
-                  <div className="stat">
-                    <span>Total Investment:</span>
-                    <span>{formatPrice(position.totalInvestment)}</span>
-                  </div>
-                  <div className="stat">
-                    <span>Current Value:</span>
-                    <span>{formatPrice(position.quantity * stock.price)}</span>
-                  </div>
-                  <div className={`stat ${profitLoss >= 0 ? 'positive' : 'negative'}`}>
-                    <span>Profit/Loss:</span>
-                    <span>{formatPrice(profitLoss)} ({percentage >= 0 ? '+' : ''}{percentage.toFixed(2)}%)</span>
+                  <div>
+                    <Label htmlFor="purchasePrice">Purchase Price (₹)</Label>
+                    <Input
+                      id="purchasePrice"
+                      type="number"
+                      step="0.01"
+                      value={position.purchasePrice}
+                      onChange={(e) => {
+                        const purchasePrice = e.target.value;
+                        const quantity = position.quantity;
+                        const totalInvestment = quantity && purchasePrice 
+                          ? parseFloat(quantity) * parseFloat(purchasePrice) 
+                          : 0;
+                        setPosition({ ...position, purchasePrice, totalInvestment });
+                      }}
+                      placeholder="Enter purchase price"
+                    />
                   </div>
                 </div>
-                <button 
-                  className="btn btn-danger"
-                  onClick={deletePosition}
-                  style={{ marginTop: '16px' }}
-                >
-                  🗑️ Delete Position
-                </button>
-              </div>
-            ) : (
-              <div className="no-position">
-                <p>You don't have a position in this stock yet.</p>
-              </div>
-            )}
-
-            <form onSubmit={handlePositionSubmit} className="position-form">
-              <h4>{position ? 'Update Position' : 'Add Position'}</h4>
-              <div className="form-group">
-                <label>Quantity:</label>
-                <input
-                  type="number"
-                  value={positionForm.quantity}
-                  onChange={(e) => setPositionForm({...positionForm, quantity: e.target.value})}
-                  placeholder="Enter quantity"
-                  min="0"
-                  step="1"
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Purchase Price per Share:</label>
-                <input
-                  type="number"
-                  value={positionForm.purchasePrice}
-                  onChange={(e) => setPositionForm({...positionForm, purchasePrice: e.target.value})}
-                  placeholder="Enter purchase price"
-                  min="0"
-                  step="0.01"
-                  required
-                />
-              </div>
-              <button 
-                type="submit" 
-                className="btn btn-primary"
-                disabled={loading}
-              >
-                {loading ? '🔄 Saving...' : (position ? 'Update Position' : 'Add Position')}
-              </button>
-            </form>
-          </div>
-        )}
-
-        {activeTab === 'alerts' && (
-          <div className="modal-body">
-            <div className="alerts-section">
-              <h4>Create New Alert</h4>
-              <form onSubmit={handleAlertSubmit} className="alert-form">
-                <div className="form-group">
-                  <label>Alert Type:</label>
-                  <select
-                    value={alertForm.alertType}
-                    onChange={(e) => setAlertForm({...alertForm, alertType: e.target.value})}
-                  >
-                    <option value="buy">Buy Alert</option>
-                    <option value="sell">Sell Alert</option>
-                  </select>
+                <div>
+                  <Label>Total Investment</Label>
+                  <div className="text-2xl font-bold text-green-600">
+                    ₹{position.totalInvestment.toFixed(2)}
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label>Target Price:</label>
-                  <input
-                    type="number"
-                    value={alertForm.targetPrice}
-                    onChange={(e) => setAlertForm({...alertForm, targetPrice: e.target.value})}
-                    placeholder="Enter target price"
-                    min="0"
-                    step="0.01"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Percentage Change (Optional):</label>
-                  <input
-                    type="number"
-                    value={alertForm.percentageChange}
-                    onChange={(e) => setAlertForm({...alertForm, percentageChange: e.target.value})}
-                    placeholder="Enter percentage"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                  />
-                </div>
-                <button 
-                  type="submit" 
-                  className="btn btn-primary"
-                  disabled={loading}
-                >
-                  {loading ? '🔄 Creating...' : 'Create Alert'}
-                </button>
-              </form>
-            </div>
+                <Button onClick={savePosition} disabled={loading} className="w-full">
+                  {loading ? 'Saving...' : 'Save Position'}
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-            <div className="alerts-list">
-              <h4>Your Alerts</h4>
-              {alerts.length === 0 ? (
-                <p>No alerts set for this stock.</p>
-              ) : (
-                alerts.map(alert => (
-                  <div key={alert._id} className="alert-item">
-                    <div className="alert-info">
-                      <div className={`alert-type ${alert.alertType}`}>
-                        {alert.alertType === 'buy' ? '🟢 Buy' : '🔴 Sell'}
-                      </div>
-                      <div className="alert-details">
-                        <span>Target: {formatPrice(alert.targetPrice)}</span>
-                        {alert.percentageChange && (
-                          <span>({alert.percentageChange}%)</span>
-                        )}
-                      </div>
-                      <div className="alert-status">
-                        {alert.isTriggered ? '✅ Triggered' : '⏳ Active'}
-                      </div>
+          {/* Alerts Tab */}
+          <TabsContent value="alerts" className="space-y-4">
+            {/* Create New Alert */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Create New Alert</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="alertType">Alert Type</Label>
+                    <Select value={newAlert.alertType} onValueChange={(value) => setNewAlert({...newAlert, alertType: value})}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="buy">Buy Alert</SelectItem>
+                        <SelectItem value="sell">Sell Alert</SelectItem>
+                        <SelectItem value="stop_loss">Stop Loss</SelectItem>
+                        <SelectItem value="take_profit">Take Profit</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="condition">Condition</Label>
+                    <Select value={newAlert.condition} onValueChange={(value) => setNewAlert({...newAlert, condition: value})}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="price_target">Price Target</SelectItem>
+                        <SelectItem value="percentage_gain">Percentage Gain</SelectItem>
+                        <SelectItem value="percentage_loss">Percentage Loss</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {newAlert.condition === 'price_target' ? (
+                    <div>
+                      <Label htmlFor="targetPrice">Target Price (₹)</Label>
+                      <Input
+                        id="targetPrice"
+                        type="number"
+                        step="0.01"
+                        value={newAlert.targetPrice}
+                        onChange={(e) => setNewAlert({...newAlert, targetPrice: e.target.value})}
+                        placeholder="Enter target price"
+                      />
                     </div>
-                    <button 
-                      className="btn btn-small btn-danger"
-                      onClick={() => deleteAlert(alert._id)}
-                    >
-                      🗑️
-                    </button>
+                  ) : (
+                    <div>
+                      <Label htmlFor="percentageChange">Percentage Change (%)</Label>
+                      <Input
+                        id="percentageChange"
+                        type="number"
+                        step="0.01"
+                        value={newAlert.percentageChange}
+                        onChange={(e) => setNewAlert({...newAlert, percentageChange: e.target.value})}
+                        placeholder="Enter percentage"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <Label htmlFor="basePrice">Base Price (₹)</Label>
+                    <Input
+                      id="basePrice"
+                      type="number"
+                      step="0.01"
+                      value={newAlert.basePrice}
+                      onChange={(e) => setNewAlert({...newAlert, basePrice: e.target.value})}
+                      placeholder={stock.price.toString()}
+                    />
                   </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
+                </div>
+
+                <Button onClick={addAlert} disabled={loading} className="w-full">
+                  <Plus className="h-4 w-4 mr-2" />
+                  {loading ? 'Creating...' : 'Create Alert'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Existing Alerts */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Active Alerts ({alerts.length})</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {alerts.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">No alerts set for this stock</p>
+                ) : (
+                  <div className="space-y-3">
+                    {alerts.map((alert) => (
+                      <div key={alert._id} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="flex items-center gap-3">
+                          {getAlertTypeIcon(alert.alertType)}
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Badge className={getAlertTypeColor(alert.alertType)}>
+                                {alert.alertType.replace('_', ' ').toUpperCase()}
+                              </Badge>
+                              <span className="font-medium">{alert.condition.replace('_', ' ')}</span>
+                            </div>
+                            <p className="text-sm text-gray-600">
+                              {alert.condition === 'price_target' 
+                                ? `Target: ₹${alert.targetPrice}`
+                                : `${alert.percentageChange}% change from ₹${alert.basePrice}`
+                              }
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteAlert(alert._id)}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

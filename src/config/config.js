@@ -2,7 +2,8 @@
 const config = {
   // API Configuration
   API: {
-    BASE_URL: 'http://localhost:3001',
+    BASE_URL: 'https://stock.happybilling.serv00.net/',
+    // BASE_URL: 'http://localhost:3001',
     ENDPOINTS: {
       AUTH: {
         LOGIN: '/api/auth/login',
@@ -11,6 +12,7 @@ const config = {
       },
       FAVORITES: {
         GET: '/api/favorites',
+        GET_ALL: '/api/favorites',
         ADD: '/api/favorites/add',
         DELETE: (symbol) => `/api/favorites/remove/${symbol}`
       },
@@ -18,13 +20,14 @@ const config = {
         HEALTH: '/api/cache/health',
         STATS: '/api/cache/stats',
         STOCKS: '/api/cache/stocks',
+        GET_STOCK: (symbol) => `/api/cache/stocks/${symbol}`,
         UPDATE: (symbol) => `/api/cache/update/${symbol}`,
         CLEAR: '/api/cache/clear'
       },
       POSITIONS: {
         GET: '/api/positions',
-        GET_SYMBOL: (symbol) => `/api/positions/${symbol}`,
-        CREATE: '/api/positions',
+        GET_STOCK: (symbol) => `/api/positions/${symbol}`,
+        CREATE_UPDATE: '/api/positions',
         DELETE: (symbol) => `/api/positions/${symbol}`,
         SUMMARY: '/api/positions/summary'
       },
@@ -37,7 +40,7 @@ const config = {
     NOTIFY: (alertId) => `/api/alerts/${alertId}/notify`
   },
       SEARCH: {
-        SEARCH: '/api/search/search',
+        SEARCH: (query) => `/api/search/search?q=${query}`,
         DETAILS: (symbol) => `/api/search/details/${symbol}`,
         VALIDATE: (symbol) => `/api/search/validate/${symbol}`
       }
@@ -46,7 +49,8 @@ const config = {
 
   // WebSocket Configuration
   WEBSOCKET: {
-    URL: 'http://localhost:3001',
+    // URL: 'http://localhost:3001',
+    URL: 'https://stock.happybilling.serv00.net/',
     OPTIONS: {
       transports: ['websocket'],
       timeout: 20000,
@@ -158,6 +162,30 @@ export const getSearchUrl = (endpoint, symbol = null) => {
     return getApiUrl(baseEndpoint(symbol));
   }
   return getApiUrl(baseEndpoint);
+};
+
+// Helper function to create authenticated Socket.io connection
+export const createAuthenticatedWebSocket = (token) => {
+  if (!token) {
+    throw new Error('Token is required for WebSocket connection');
+  }
+  
+  // Import socket.io-client
+  const io = require('socket.io-client');
+  
+  // Create Socket.io connection
+  const socket = io(config.WEBSOCKET.URL, {
+    transports: ['websocket'],
+    timeout: 20000,
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000
+  });
+  
+  // Store token for later use
+  socket._authToken = token;
+  
+  return socket;
 };
 
 export default config; 
